@@ -1,47 +1,91 @@
-# Unose Voice 🎙️🏛️
-*Edge Neural Voice Synthesis Research & Sovereign Accented Models by Igunosa Labs*
+# Unose-Voice: Neural Voice Synthesis & Adaptation Toolkit
 
-[![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-igunosalabs-yellow)](https://huggingface.co/igunosalabs)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+**Unose-Voice** provides an end-to-end pipeline for preparing speech datasets, fine-tuning VITS acoustic models via Piper, and exporting lightweight standalone ONNX graphs for low-latency CPU and edge inference.
 
-**Unose Voice** is an open neural voice cloning and speech research suite created by **Patrick Aigbogun** and the **Igunosa Labs** research team. It focuses on zero-latency, ultra-low memory footprint, sovereign voice synthesis running directly on commodity edge CPU and ARM64 servers.
+Developed by **Igunosa Labs**.
 
 ---
 
-## 🚀 Model Releases
+## Pretrained Models
 
-| Model | Checkpoint Architecture | Fine-Tuning Duration | Key Milestones | Hugging Face Repository |
+| Model | Architecture | Checkpoint | Target | Hugging Face Hub |
 | :--- | :--- | :--- | :--- | :--- |
-| **`Unose-Voice-v1.0`** | Native Male Base (`en_US-ryan-medium`) | **500 Epochs** | Zero transposition tremor, full baritone fundamental frequency ($F_0$), 12-min studio take | [igunosalabs/Unose-Voice-v1.0](https://huggingface.co/igunosalabs/Unose-Voice-v1.0) |
-| **`Unose-Voice-v0.5`** | Female Base (`en_US-lessac-medium`) | 250 Epochs | Proof of concept adaptation, 60.5MB ONNX graph | [igunosalabs/Unose-Voice-v0.5](https://huggingface.co/igunosalabs/Unose-Voice-v0.5) |
+| **Unose-Voice-v1.0** | VITS ONNX (60.5 MB) | `en_US-ryan-medium` adaptation | CPU / GPU / edge | [igunosalabs/Unose-Voice-v1.0](https://huggingface.co/igunosalabs/Unose-Voice-v1.0) |
 
 ---
 
-## 🔬 Empirical Architecture & Science
+## Requirements & Setup
 
-### Acoustic Transposition Ceiling (The Female Base Post-Mortem)
-In `v0.5`, adaptation was performed on `en_US-lessac-medium` ($F_0 \approx 210–240\text{ Hz}$). Adapting down by $>100\text{ Hz}$ to a natural male baritone forced the HiFi-GAN vocoder upsampling convolutions to extrapolate outside their learned receptive field, generating pitch tremor and harmonic buzz. 
-
-In `v1.0`, transitioning to `en_US-ryan-medium` ($F_0 \approx 110–130\text{ Hz}$) resolved the pitch mismatch natively. Coupled with a 132-slice phonetically balanced master studio dataset, `v1.0` delivers natural timbre and cadence at 60.5 MB.
-
----
-
-## 💻 Quickstart (Piper Inference)
+### Prerequisites
+- Python 3.10+
+- FFmpeg
+- eSpeak NG
 
 ```bash
-# 1. Install Piper
-curl -sSL https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz | tar -xz
+# Clone the repository
+git clone https://github.com/Igunosa-Labs/unose-voice.git
+cd unose-voice
 
-# 2. Download Model & Config
-wget https://huggingface.co/igunosalabs/Unose-Voice-v1.0/resolve/main/Unose-Voice-v1.0.onnx
-wget https://huggingface.co/igunosalabs/Unose-Voice-v1.0/resolve/main/Unose-Voice-v1.0.onnx.json
+# Install piper CLI for inference
+pip install piper-tts
 
-# 3. Synthesize Speech
-echo "Intelligence is kinetic. It moves, observes, and manipulates the physical universe." | \
-  ./piper/piper -m Unose-Voice-v1.0.onnx -f output.wav
+# For training & export environments (GPU recommended)
+pip install piper-train
 ```
 
 ---
 
-## 📜 License
-MIT License. Copyright (c) 2026 Igunosa Labs.
+## Workflow
+
+### 1. Dataset Preprocessing
+Split long continuous studio or interview recordings into phonetically aligned, normalized audio segments (22,050 Hz 16-bit mono PCM):
+
+```bash
+python3 prep/preprocess.py \
+    --input-audio /path/to/raw_audio.wav \
+    --output-dir ./dataset \
+    --whisper-model /path/to/ggml-small.bin
+```
+
+This outputs:
+- `dataset/wavs/`: Sliced audio segments (1.0s to 12.0s duration).
+- `dataset/metadata.csv`: LJSpeech-format alignment index (`clip_id|text|text`).
+
+### 2. Model Fine-Tuning
+Adapt a base VITS checkpoint to the custom speaker:
+
+```bash
+bash recipes/train.sh ./dataset ./training_dir ./checkpoints/en_US-ryan-medium.ckpt 16 500
+```
+
+### 3. Export to Standalone ONNX
+Convert the PyTorch Lightning checkpoint to an optimized ONNX computational graph:
+
+```bash
+python3 scripts/export_onnx.py \
+    --checkpoint ./training_dir/lightning_logs/version_0/checkpoints/best.ckpt \
+    --output ./models/unose_voice.onnx
+```
+
+### 4. Inference
+
+#### Command-Line Inference:
+```bash
+echo "Hello, this is a test of the neural voice model." | \
+  piper -m ./models/unose_voice.onnx -f output.wav
+```
+
+#### Python Inference:
+```bash
+python3 scripts/infer.py \
+    --model ./models/unose_voice.onnx \
+    --text "Hello, this is a test of the neural voice model." \
+    --output output.wav
+```
+
+---
+
+## License
+
+Developed by **Igunosa Labs**. Released under the MIT License.
+Base Piper architecture copyright Rhasspy / Michael Hansen.
